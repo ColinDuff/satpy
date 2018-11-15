@@ -351,10 +351,21 @@ class TestScene(unittest.TestCase):
             y_size=y_size,
             area_extent=area_extent,
         )
+        area_def2 = AreaDefinition(
+            'test2',
+            'test2',
+            'test2',
+            proj_dict,
+            x_size=x_size // 2,
+            y_size=y_size // 2,
+            area_extent=area_extent,
+        )
         scene1["1"] = DataArray(np.zeros((y_size, x_size)))
         scene1["2"] = DataArray(np.zeros((y_size, x_size)), dims=('y', 'x'))
         scene1["3"] = DataArray(np.zeros((y_size, x_size)), dims=('y', 'x'),
                                 attrs={'area': area_def})
+        scene1["4"] = DataArray(np.zeros((y_size // 2, x_size // 2)), dims=('y', 'x'),
+                                attrs={'area': area_def2})
 
         # by area
         crop_area = AreaDefinition(
@@ -376,7 +387,8 @@ class TestScene(unittest.TestCase):
         self.assertIn('3', new_scn1)
         self.assertTupleEqual(new_scn1['1'].shape, (y_size, x_size))
         self.assertTupleEqual(new_scn1['2'].shape, (y_size, x_size))
-        self.assertTupleEqual(new_scn1['3'].shape, (3380, 3706))
+        self.assertTupleEqual(new_scn1['3'].shape, (3380, 3708))
+        self.assertTupleEqual(new_scn1['4'].shape, (1690, 1854))
 
         # by lon/lat bbox
         new_scn1 = scene1.crop(
@@ -386,7 +398,8 @@ class TestScene(unittest.TestCase):
         self.assertIn('3', new_scn1)
         self.assertTupleEqual(new_scn1['1'].shape, (y_size, x_size))
         self.assertTupleEqual(new_scn1['2'].shape, (y_size, x_size))
-        self.assertTupleEqual(new_scn1['3'].shape, (183, 712))
+        self.assertTupleEqual(new_scn1['3'].shape, (184, 714))
+        self.assertTupleEqual(new_scn1['4'].shape, (92, 357))
 
         # by x/y bbox
         new_scn1 = scene1.crop(
@@ -396,7 +409,8 @@ class TestScene(unittest.TestCase):
         self.assertIn('3', new_scn1)
         self.assertTupleEqual(new_scn1['1'].shape, (y_size, x_size))
         self.assertTupleEqual(new_scn1['2'].shape, (y_size, x_size))
-        self.assertTupleEqual(new_scn1['3'].shape, (34, 68))
+        self.assertTupleEqual(new_scn1['3'].shape, (36, 70))
+        self.assertTupleEqual(new_scn1['4'].shape, (18, 35))
 
     def test_contains(self):
         from satpy import Scene
@@ -1052,7 +1066,6 @@ class TestSceneLoading(unittest.TestCase):
         # it is fine that an optional prereq doesn't exist
         scene.load(['comp18'])
         loaded_ids = list(scene.datasets.keys())
-        print(loaded_ids)
         # depends on:
         #   ds3
         #   ds4 (mod1, mod3)
@@ -1448,6 +1461,26 @@ class TestSceneLoading(unittest.TestCase):
         self.assertEqual(len(loaded_ids), 2)
         self.assertIn('comp11', scene.datasets)
         self.assertIn('comp23', scene.datasets)
+
+    @mock.patch('satpy.composites.CompositorLoader.load_compositors', autospec=True)
+    @mock.patch('satpy.scene.Scene.create_reader_instances')
+    def test_load_too_many(self, cri, cl):
+        """Test dependency tree if too many reader keys match."""
+        import satpy.scene
+        from satpy.tests.utils import create_fake_reader, test_composites
+        from satpy import DatasetID
+        datasets = [DatasetID(name='duplicate1', wavelength=(0.1, 0.2, 0.3)),
+                    DatasetID(name='duplicate2', wavelength=(0.1, 0.2, 0.3))]
+        reader = create_fake_reader('fake_reader', 'fake_sensor', datasets=datasets)
+        reader.datasets = reader.available_dataset_ids = reader.all_dataset_ids = datasets
+        cri.return_value = {'fake_reader': reader}
+        comps, mods = test_composites('fake_sensor')
+        cl.return_value = (comps, mods)
+        scene = satpy.scene.Scene(filenames=['bla'], base_dir='bli', reader='fake_reader')
+        # mock the available comps/mods in the compositor loader
+        avail_comps = scene.available_composite_ids()
+        self.assertEqual(len(avail_comps), 0)
+        self.assertRaises(KeyError, scene.load, [0.21])
 
 
 class TestSceneResampling(unittest.TestCase):

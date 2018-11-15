@@ -212,7 +212,7 @@ class TestReaderLoader(unittest.TestCase):
 
     def test_no_args(self):
         """Test no args provided.
-        
+
         This should check the local directory which should have no files.
         """
         from satpy.readers import load_readers
@@ -242,6 +242,16 @@ class TestReaderLoader(unittest.TestCase):
         self.assertRaises(ValueError, load_readers, reader='i_dont_exist', filenames=[
             'SVI01_npp_d20120225_t1801245_e1802487_b01708_c20120226002130255476_noaa_ops.h5',
             ])
+
+    @unittest.skipIf(sys.version_info < (3, 4), "pathlib added in Python 3.4")
+    def test_filenames_as_path(self):
+        """Test with filenames specified as pathlib.Path"""
+        from pathlib import Path
+        from satpy.readers import load_readers
+        ri = load_readers(filenames=[
+            Path('SVI01_npp_d20120225_t1801245_e1802487_b01708_c20120226002130255476_noaa_ops.h5'),
+        ])
+        self.assertListEqual(list(ri.keys()), ['viirs_sdr'])
 
     def test_filenames_as_dict(self):
         """Test loading readers where filenames are organized by reader"""
@@ -436,6 +446,16 @@ class TestFindFilesAndReaders(unittest.TestCase):
         # 'viirs' so we just pass it and hope that this works
         self.assertRaises(ValueError, find_files_and_readers,
                           sensor='viirs')
+
+    def test_reader_load_failed(self):
+        """Test that an exception is raised when a reader can't be loaded."""
+        from satpy.readers import find_files_and_readers
+        import yaml
+        # touch the file so it exists on disk
+        with mock.patch('yaml.load') as load:
+            load.side_effect = yaml.YAMLError("Import problems")
+            self.assertRaises(yaml.YAMLError, find_files_and_readers,
+                              reader='viirs_sdr')
 
 
 class TestYAMLFiles(unittest.TestCase):
